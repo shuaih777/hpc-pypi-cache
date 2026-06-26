@@ -17,48 +17,28 @@ jobs:
         run: |
           mkdir -p wheels
 
-          # Download each package separately to avoid resolution-too-deep
-          packages=(
-            "regex"
-            "transformers>=4.45,<5"
-            "accelerate>=0.30,<2"
-            "sentence-transformers>=3.0,<6"
-            "peft>=0.12,<1"
-            "einops"
-            "omegaconf>=2.3"
-            "gensim>=4.3,<5"
-            "tokenizers"
-            "safetensors"
-          )
+          # Step 1: Download everything (no platform restriction)
+          # This resolves dependencies properly
+          pip download -d wheels \
+            --python-version 3.12 \
+            --only-binary=:all: \
+            regex \
+            tokenizers \
+            safetensors \
+            transformers \
+            accelerate \
+            sentence-transformers \
+            peft \
+            einops \
+            omegaconf \
+            gensim
 
-          for pkg in "${packages[@]}"; do
-            echo "=== Downloading: $pkg ==="
-            pip download -d wheels \
-              --platform manylinux_2_28_x86_64 \
-              --platform manylinux_2_17_x86_64 \
-              --python-version 3.12 \
-              --only-binary=:all: \
-              "$pkg" || echo "WARN: failed to download $pkg with platform constraint"
-          done
-
-          # Some packages are pure-python, retry without platform constraint
-          pure_packages=(
-            "einops"
-            "omegaconf"
-            "accelerate"
-            "peft"
-            "transformers"
-            "sentence-transformers"
-          )
-
-          for pkg in "${pure_packages[@]}"; do
-            echo "=== Downloading pure-python: $pkg ==="
-            pip download -d wheels --no-deps "$pkg" 2>/dev/null || true
-          done
-
-          echo "=== All wheels ==="
-          ls -la wheels/
-          echo "Total: $(ls wheels/*.whl 2>/dev/null | wc -l) wheel files"
+          # Step 2: Remove non-linux wheels (windows/macos) if any
+          cd wheels
+          rm -f *win*.whl *macosx*.whl 2>/dev/null || true
+          echo "=== Downloaded wheels ==="
+          ls -la
+          echo "=== Total files: $(ls *.whl | wc -l) ==="
 
       - name: Create release
         env:
@@ -67,4 +47,4 @@ jobs:
           TAG="wheels-$(date +%Y%m%d-%H%M%S)"
           gh release create "$TAG" wheels/*.whl \
             --title "Python wheels for HPC ($(date +%Y-%m-%d))" \
-            --notes "Wheels for Python 3.12 / manylinux_2_28_x86_64"
+            --notes "Wheels for Python 3.12 / Linux x86_64. Install with: pip install --no-index --find-links ./wheels/ <package>"
