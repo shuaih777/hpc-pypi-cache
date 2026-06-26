@@ -1,0 +1,37 @@
+name: Download Python wheels for HPC
+
+on:
+workflow_dispatch:
+
+jobs:
+download-wheels:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+        with:
+        python-version: "3.12"
+
+    - name: Download wheels
+        run: |
+        mkdir -p wheels
+        pip download -d wheels \
+            --platform manylinux_2_28_x86_64 \
+            --platform manylinux_2_17_x86_64 \
+            --python-version 3.12 \
+            --only-binary=:all: \
+            regex transformers accelerate \
+            sentence-transformers peft einops \
+            omegaconf gensim tokenizers safetensors
+
+        ls -la wheels/
+
+    - name: Create release
+        env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+        TAG="wheels-$(date +%Y%m%d-%H%M%S)"
+        gh release create "$TAG" wheels/*.whl \
+            --title "Python wheels for HPC ($(date +%Y-%m-%d))" \
+            --notes "Wheels for Python 3.12 / manylinux_2_28_x86_64"
