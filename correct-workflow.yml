@@ -1,0 +1,70 @@
+name: Download Python wheels for HPC
+
+on:
+  workflow_dispatch:
+
+jobs:
+  download-wheels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download wheels
+        run: |
+          mkdir -p wheels
+
+          # Download each package separately to avoid resolution-too-deep
+          packages=(
+            "regex"
+            "transformers>=4.45,<5"
+            "accelerate>=0.30,<2"
+            "sentence-transformers>=3.0,<6"
+            "peft>=0.12,<1"
+            "einops"
+            "omegaconf>=2.3"
+            "gensim>=4.3,<5"
+            "tokenizers"
+            "safetensors"
+          )
+
+          for pkg in "${packages[@]}"; do
+            echo "=== Downloading: $pkg ==="
+            pip download -d wheels \
+              --platform manylinux_2_28_x86_64 \
+              --platform manylinux_2_17_x86_64 \
+              --python-version 3.12 \
+              --only-binary=:all: \
+              "$pkg" || echo "WARN: failed to download $pkg with platform constraint"
+          done
+
+          # Some packages are pure-python, retry without platform constraint
+          pure_packages=(
+            "einops"
+            "omegaconf"
+            "accelerate"
+            "peft"
+            "transformers"
+            "sentence-transformers"
+          )
+
+          for pkg in "${pure_packages[@]}"; do
+            echo "=== Downloading pure-python: $pkg ==="
+            pip download -d wheels --no-deps "$pkg" 2>/dev/null || true
+          done
+
+          echo "=== All wheels ==="
+          ls -la wheels/
+          echo "Total: $(ls wheels/*.whl 2>/dev/null | wc -l) wheel files"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="wheels-$(date +%Y%m%d-%H%M%S)"
+          gh release create "$TAG" wheels/*.whl \
+            --title "Python wheels for HPC ($(date +%Y-%m-%d))" \
+            --notes "Wheels for Python 3.12 / manylinux_2_28_x86_64"
